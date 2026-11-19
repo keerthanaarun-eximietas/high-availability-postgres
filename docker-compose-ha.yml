@@ -1,0 +1,75 @@
+
+services:
+
+  # Distributed configuration store
+  ha-etcd:
+    image: quay.io/coreos/etcd:v3.5.17
+    container_name: ha-etcd
+    command:
+      - etcd
+      - --name=ha-etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://ha-etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://ha-etcd:2380
+      - --initial-cluster=ha-etcd=http://ha-etcd:2380
+      - --initial-cluster-state=new
+    volumes:
+      - ha_etcd_data:/etcd-data
+    environment:
+      ETCDCTL_API: "3"
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # First PostgreSQL node
+  ha-postgres-1:
+    image: postgres-patroni:17
+    container_name: ha-postgres-1
+    command: /etc/patroni/patroni1.yml
+    volumes:
+      - ./patroni/patroni1.yml:/etc/patroni/patroni1.yml:ro
+      - ha_postgres1_data:/var/lib/postgresql/data
+    ports:
+      - "5541:5432"
+      - "8008:8008"
+    depends_on:
+      ha-etcd:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Second PostgreSQL node
+  ha-postgres-2:
+    image: postgres-patroni:17
+    container_name: ha-postgres-2
+    command: /etc/patroni/patroni2.yml
+    volumes:
+      - ./patroni/patroni2.yml:/etc/patroni/patroni2.yml:ro
+      - ha_postgres2_data:/var/lib/postgresql/data
+    ports:
+      - "5542:5432"
+      - "8009:8008"
+    depends_on:
+      ha-etcd:
+        condition: service_healthy
+    restart: unless-stopped
+  haproxy:
+    image: haproxy:3.0-alpine
+    container_name: ha-haproxy
+    ports:
+      - "5500:5000"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - ha-postgres-1
+      - ha-postgres-2
+    restart: unless-stopped
+
+volumes:
+  ha_etcd_data:
+  ha_postgres1_data:
+  ha_postgres2_data:
