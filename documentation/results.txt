@@ -1,0 +1,188 @@
+============================================
+ PostgreSQL HA - Failover and Recovery Test
+============================================
+
+[PASS] ha-postgres-1 is running
+[PASS] ha-postgres-2 is running
+[PASS] ha-haproxy is running
+Enter the ha_app database password: *******
+
+Current primary : ha-postgres-2
+Current standby : ha-postgres-1
+
+[PASS] Exactly one Patroni primary identified
+
+============================================
+ PATRONI CLUSTER STATUS
+============================================
++ Cluster: pg-ha-cluster (7709758081727799335) -------+----+-------------+-----+------------+-----+
+| Member        | Host          | Role    | State     | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+| ha-postgres-1 | ha-postgres-1 | Replica | streaming |  6 |   0/34CB120 |   0 |  0/34CB120 |   0 |
+| ha-postgres-2 | ha-postgres-2 | Leader  | running   |  6 |             |     |            |     |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+
+Expected primary IP: 172.21.0.4
+Actual server IP:    172.21.0.4
+Recovery status:     false
+[PASS] HAProxy routes connections to current primary
+
+Preparing pre-failover test data...
+Executing SQL on ha-haproxy:5000
+[PASS] Pre-failover record inserted
+
+--------------------------------------------
+ Database Tables
+--------------------------------------------
+             List of relations
+ Schema |       Name       | Type  | Owner  
+--------+------------------+-------+--------
+ public | ha_failover_test | table | ha_app
+ public | ha_test          | table | ha_app
+(2 rows)
+
+
+
+
+--------------------------------------------
+ Failover Test Table Contents
+--------------------------------------------
+ id |                     message                      
+----+--------------------------------------------------
+  1 | Record inserted before failover
+ 34 | Record inserted after failover
+ 35 | before-failover-8db3fdd5f6534a6191addf72c4ae9214
+ 68 | after-failover-97bf2275e1794e59b8f78b0cbc5bddd9
+ 69 | before-failover-e65f422591eb47b089ba43baa59ccfc8
+(5 rows)
+
+
+
+
+Stopping current primary: ha-postgres-2
+ha-postgres-2
+[PASS] Primary failure simulated
+Waiting for Patroni to promote the standby...
+New primary: ha-postgres-1
+[PASS] Patroni automatically promoted ha-postgres-1
+Expected primary IP: 172.21.0.3
+Actual server IP:    172.21.0.3
+Recovery status:     false
+[PASS] HAProxy rerouted connections to ha-postgres-1
+
+============================================
+ PATRONI CLUSTER STATUS
+============================================
++ Cluster: pg-ha-cluster (7709758081727799335) -----+----+-------------+-----+------------+-----+
+| Member        | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------------+---------------+---------+---------+----+-------------+-----+------------+-----+
+| ha-postgres-1 | ha-postgres-1 | Leader  | running |  7 |             |     |            |     |
+| ha-postgres-2 | ha-postgres-2 | Replica | stopped |    |     unknown |     |    unknown |     |
++---------------+---------------+---------+---------+----+-------------+-----+------------+-----+
+
+
+Verifying data after failover...
+Executing SQL on ha-haproxy:5000
+Pre-failover record count: 1
+[PASS] Pre-failover record survived failover
+Executing SQL on ha-haproxy:5000
+[PASS] New record inserted after failover
+
+--------------------------------------------
+ Failover Test Table Contents
+--------------------------------------------
+ id  |                     message                      
+-----+--------------------------------------------------
+   1 | Record inserted before failover
+  34 | Record inserted after failover
+  35 | before-failover-8db3fdd5f6534a6191addf72c4ae9214
+  68 | after-failover-97bf2275e1794e59b8f78b0cbc5bddd9
+  69 | before-failover-e65f422591eb47b089ba43baa59ccfc8
+ 102 | after-failover-a015aa4310aa4da68226a2d6e3eed3dc
+(6 rows)
+
+
+
+
+Restarting failed node: ha-postgres-2
+ha-postgres-2
+[PASS] Failed node restarted
+Waiting for ha-postgres-2 to rejoin as a replica...
+[PASS] ha-postgres-2 rejoined as a replica
+
+============================================
+ PATRONI CLUSTER STATUS
+============================================
++ Cluster: pg-ha-cluster (7709758081727799335) -------+----+-------------+-----+------------+-----+
+| Member        | Host          | Role    | State     | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+| ha-postgres-1 | ha-postgres-1 | Leader  | running   |  7 |             |     |            |     |
+| ha-postgres-2 | ha-postgres-2 | Replica | streaming |  7 |   0/34CD988 |   0 |  0/34CD988 |   0 |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+
+
+--------------------------------------------
+ Failover Test Table Contents
+--------------------------------------------
+ id  |                     message                      
+-----+--------------------------------------------------
+   1 | Record inserted before failover
+  34 | Record inserted after failover
+  35 | before-failover-8db3fdd5f6534a6191addf72c4ae9214
+  68 | after-failover-97bf2275e1794e59b8f78b0cbc5bddd9
+  69 | before-failover-e65f422591eb47b089ba43baa59ccfc8
+ 102 | after-failover-a015aa4310aa4da68226a2d6e3eed3dc
+(6 rows)
+
+
+
+
+Verifying data on recovered replica...
+Executing SQL on ha-postgres-2:5432
+[PASS] Both records replicated to recovered replica
+Executing SQL on ha-postgres-2:5432
+[PASS] Recovered node confirmed as a PostgreSQL replica
+
+============================================
+ PATRONI CLUSTER STATUS
+============================================
++ Cluster: pg-ha-cluster (7709758081727799335) -------+----+-------------+-----+------------+-----+
+| Member        | Host          | Role    | State     | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+| ha-postgres-1 | ha-postgres-1 | Leader  | running   |  7 |             |     |            |     |
+| ha-postgres-2 | ha-postgres-2 | Replica | streaming |  7 |   0/34CD988 |   0 |  0/34CD988 |   0 |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+
+
+--------------------------------------------
+ Failover Test Table Contents
+--------------------------------------------
+ id  |                     message                      
+-----+--------------------------------------------------
+   1 | Record inserted before failover
+  34 | Record inserted after failover
+  35 | before-failover-8db3fdd5f6534a6191addf72c4ae9214
+  68 | after-failover-97bf2275e1794e59b8f78b0cbc5bddd9
+  69 | before-failover-e65f422591eb47b089ba43baa59ccfc8
+ 102 | after-failover-a015aa4310aa4da68226a2d6e3eed3dc
+(6 rows)
+
+
+
+[PASS] Original promoted primary remains the leader
+Expected primary IP: 172.21.0.3
+Actual server IP:    172.21.0.3
+Recovery status:     false
+[PASS] HAProxy still routes to the correct primary
+
+Final Patroni cluster state:
++ Cluster: pg-ha-cluster (7709758081727799335) -------+----+-------------+-----+------------+-----+
+| Member        | Host          | Role    | State     | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+| ha-postgres-1 | ha-postgres-1 | Leader  | running   |  7 |             |     |            |     |
+| ha-postgres-2 | ha-postgres-2 | Replica | streaming |  7 |   0/34CD988 |   0 |  0/34CD988 |   0 |
++---------------+---------------+---------+-----------+----+-------------+-----+------------+-----+
+
+============================================
+ RESULT: ALL TESTS PASSED
+============================================
